@@ -14,7 +14,7 @@ model.fc = nn.Linear(in_features, 11)
 data_dir = 'dataset'
 
 def load_train(datadir):
-    train_transforms = transforms.Compose([transforms.Resize(256),
+    train_transforms = transforms.Compose([transforms.Resize(128),
                                        transforms.ToTensor(),
                                        ])
     trainset = datasets.ImageFolder(datadir,       
@@ -41,7 +41,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.003)
 epoch_losses = []
 epoch_accs = []
 
-for i in range(5):
+for i in range(40):
     epoch_loss = 0.0
     epoch_acc = 0
     
@@ -64,7 +64,7 @@ for i in range(5):
     print("")
     print("Loss: " + str(epoch_loss / len(trainloader)))
     epoch_losses.append(epoch_loss / len(trainloader))
-    print("Accuracy: " + str(epoch_acc / len(trainset)) + "%")
+    print("Accuracy: " + str(epoch_acc / len(trainset)))
     epoch_accs.append(epoch_acc / len(trainset))
     
     torch.save(model.state_dict(), 'torch_model/resnet18.pth')
