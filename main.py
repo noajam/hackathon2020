@@ -31,8 +31,13 @@ from imutils.video import VideoStream
 import imutils
 import time
 import cv2
+from PIL import Image
 
 import detect_mask_video as det
+
+import torch
+import torch.nn as nn
+from torchvision import models, transforms
 
 width = 375
 height = 667
@@ -41,6 +46,14 @@ users = {
     "billybob": [12345, 3]
 }
 
+model = models.resnet18(pretrained=False)
+
+in_features = model.fc.in_features
+model.fc = nn.Linear(in_features, 11)
+model.load_state_dict(torch.load('torch_model/resnet18.pth'))
+model.eval()
+
+location = ['ArkansasUnion', 'BellEngineering', 'FaulknerCenter', 'GearhartHall', 'GreekAmphitheater', 'JBHuntBuilding', 'OldMain', 'RazorbackStadium', 'SpooferStone', 'VolWalker', 'WaltonCollege']
 
 c1 = Color(65/255,65/255,70/255)
 c2 = Color(40/255,40/255,42/255)
@@ -489,6 +502,15 @@ class HomeScreen(Screen, FloatLayout):
         Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
         filename = askopenfilename() # show an "Open" dialog box and return the path to the selected file
         print(filename)
+        transform = transforms.Compose([transforms.Resize(128),
+                                        transforms.ToTensor()])
+        image = Image.open(filename)
+        image_tensor = transform(image).float()
+        image_tensor = image_tensor.unsqueeze_(0)
+        output = model(image_tensor)
+        index = output.data.numpy().argmax()
+        
+        print(location[index])
     
 
 class FriendsScreen(Screen,FloatLayout):
@@ -572,13 +594,7 @@ class LoginScreen(Screen, FloatLayout):
         super(LoginScreen, self).__init__(**kwargs)
         self.canvas.add(c1)
         self.canvas.add(Rectangle(size=(width, height)))
-        self.add_widget(
-            Button(
-                size=(100, 50),
-                size_hint = (None, None),
-                background_normal = 'bloomLogoA.png', 
-                on_press = self.switchHealth,
-                pos_hint={'center_x': 0.9, 'center_y': 0.05}))
+
         self.add_widget(
             Label(
                 text="LOG IN",
