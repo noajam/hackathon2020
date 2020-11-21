@@ -16,16 +16,31 @@ from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.factory import Factory
 from kivy.properties import ObjectProperty
 from kivy.uix.popup import Popup
-from kivy.uix.filechooser import FileChooserListView, FileChooserIconView
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.image import Image
+from kivy.clock import Clock
+from kivy.graphics.texture import Texture
 from kivy.uix.screenmanager import (ScreenManager, Screen, NoTransition, 
 SlideTransition, CardTransition, SwapTransition, 
 FadeTransition, WipeTransition, FallOutTransition, RiseInTransition)  
 from tkinter import Tk     # from tkinter import Tk for Python 3.x
 from tkinter.filedialog import askopenfilename
+from imutils.video import VideoStream
+import imutils
+import time
+import cv2
 
+import detect_mask_video as det
 
 width = 375
 height = 667
+
+users = {
+    "billybob": [12345, 3]
+}
+
 
 c1 = Color(65/255,65/255,70/255)
 c2 = Color(40/255,40/255,42/255)
@@ -77,7 +92,7 @@ class SignUpScreen(Screen, FloatLayout):
                 size_hint=(0.4, 0.05),
                 background_normal = '',
                 background_color = (48/255,48/255,54/255,1),
-                on_press = self.switchHome,
+                on_press = self.switchMask,
                 pos_hint={'center_x': 0.5, 'center_y': 0.45}))
         
         self.add_widget(
@@ -98,16 +113,96 @@ class SignUpScreen(Screen, FloatLayout):
         
     
     
-    def switchHome(self, instance):
-        sm.current = 'home'
+    def switchMask(self, instance):
+        sm.current = 'mask'
         
     def switchLogin(self, instance):
         sm.current = 'login'
     
-class MaskScreen(Screen, FloatLayout):  
+class MaskScreen(Screen, BoxLayout):  
     def __init__(self, **kwargs):
         super(MaskScreen, self).__init__(**kwargs)
+        self.img1=Image()
+        self.add_widget(self.img1)
+        self.increment = 0
+        #opencv2 stuffs
+        self.vs = VideoStream(src=0).start()
+        #cv2.namedWindow("CV2 Image")
+        Clock.schedule_interval(self.update, 1.0/33.0)
+
+    def update(self, dt):
+        
+        # display image from cam in opencv window
+        frame = self.vs.read()
+        #frame = imutils.resize(frame, width=400)
+        
+        (locs, preds) = det.detect_and_predict_mask(frame, det.faceNet, det.maskNet)
+        self.add_widget(
+                    Button(
+                    size_hint=(0.8, 0.01),
+                    background_normal = '',
+                    background_color = (40/255,40/255,42/255 ,1),
+                    pos_hint={'center_x': 0.5, 'center_y': 0.2}))
+        for (box, pred) in zip(locs, preds):
+            # unpack the bounding box and predictions
+            (startX, startY, endX, endY) = box
+            (mask, withoutMask) = pred
     
+            # determine the class label and color we'll use to draw
+            # the bounding box and text
+            label = "Mask" if mask > withoutMask else "No Mask"
+            color = (0, 255, 0) if label == "Mask" else (0, 0, 255)
+            if self.increment > 10:
+                Clock.unschedule(self.update)
+                self.vs.stop()
+                self.add_widget(
+                    Button(
+                    size_hint=(0.8/11*self.increment, 0.01),
+                    background_normal = '',
+                    background_color = (69/255,184/255,59/255 ,1),
+                    pos_hint={'center_x': 0.5, 'center_y': 0.2}))
+                self.add_widget(
+                    Button(
+                        text="Submit",
+                    size_hint=(0.4, 0.05),
+                    background_normal = '',
+                    background_color = (48/255,48/255,54/255,1),
+                    on_press = self.switchHome,
+                    pos_hint={'center_x': 0.5, 'center_y': 0.1}))
+                
+            elif label == "Mask":
+                self.increment += 1
+                self.add_widget(
+                    Button(
+                    size_hint=(0.8/11*self.increment, 0.01),
+                    background_normal = '',
+                    background_color = (69/255,184/255,59/255 ,1),
+                    pos_hint={'center_x': 0.5, 'center_y': 0.2}))
+
+            # include the probability in the label
+            label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
+
+            # display the label and bounding box rectangle on the output
+            # frame
+            cv2.putText(frame, label, (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 2)
+            cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
+
+
+        
+        #cv2.imshow("CV2 Image", frame)
+        # convert it to texture
+        buf1 = cv2.flip(frame, 0)
+        buf = buf1.tostring()
+        texture1 = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr') 
+        #if working on RASPBERRY PI, use colorfmt='rgba' here instead, but stick with "bgr" in blit_buffer. 
+        texture1.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
+        # display image from the texture
+        self.img1.texture = texture1    
+        
+    def switchHome(self, instance):
+        sm.current = 'home'
+
 class HealthScreen(Screen, FloatLayout):
     def __init__(self, **kwargs):
         super(HealthScreen, self).__init__(**kwargs)
@@ -478,6 +573,13 @@ class LoginScreen(Screen, FloatLayout):
         self.canvas.add(c1)
         self.canvas.add(Rectangle(size=(width, height)))
         self.add_widget(
+            Button(
+                size=(100, 50),
+                size_hint = (None, None),
+                background_normal = 'bloomLogoA.png', 
+                on_press = self.switchHealth,
+                pos_hint={'center_x': 0.9, 'center_y': 0.05}))
+        self.add_widget(
             Label(
                 text="LOG IN",
                 font_size='30sp',
@@ -513,7 +615,7 @@ class LoginScreen(Screen, FloatLayout):
                 size_hint=(0.4, 0.05),
                 background_normal = '',
                 background_color = (48/255,48/255,54/255,1),
-                on_press = self.switchHome,
+                on_press = self.switchMask,
                 pos_hint={'center_x': 0.5, 'center_y': 0.45}))
         
         self.add_widget(
@@ -535,8 +637,9 @@ class LoginScreen(Screen, FloatLayout):
         
     
     
-    def switchHome(self, instance):
-        sm.current = 'home'
+    def switchMask(self, instance):
+        
+        sm.current = 'mask'
     def switchSignUp(self, instance):
         sm.current = 'signup'
 
